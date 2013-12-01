@@ -1,0 +1,9 @@
+-- A script that turned the ASCII codes output by makedts into hex
+codes, an additional function can match makedts' output with fdtdump's
+on a node-by-node basis.
+
+-- The matching function could produce a "diff" output between a set of DTS and DTSI source files and a reverse-compiled binary.
+
+-- These functions could then answer the question, "Can this set of
+DTS files produce this DTB file?"
+
