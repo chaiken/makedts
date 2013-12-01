@@ -23,6 +23,7 @@
 CC=arm-none-linux-gnueabi-gcc
 SRCARCH=arm
 BASE=`basename $1 .dts`
+DTC=scripts/dtc/dtc
 DTC_CPP_FLAGS="-E -Wp,-MD,$BASE.pre.tmp -nostdinc -Iarch/$SRCARCH/boot/dts -Iarch/$SRCARCH/boot/dts/include -undef -D__DTS__  -x assembler-with-cpp"
 
 function usage()
@@ -50,7 +51,9 @@ function calc_kernel_version()
 	fi
 
 	KERNELVERSION_HUMAN=$VERSION.$PATCHLEVEL.$SUBLEVEL$EXTRAVERSION
-	return $KERNELVERSION_HUMAN
+	echo "KERNELVERSION is $KERNELVERSION_HUMAN"
+	KERNELVERSION=`expr $VERSION \* 65536 + $PATCHLEVEL \* 256 + $SUBLEVEL `
+	return
 }
 
 if [[ $# -ne 1 ]] ; then
@@ -61,16 +64,19 @@ if ( [ ! -d arch ] || [ ! -d scripts ] ) ; then
    usage
 fi
 
+if ( [ ! -f $DTC ] ) ; then
+   echo "Device-tree compiler not found in $DTC."
+   echo "Point this script to a working DTC, or just compile the kernel once before running again."
+   exit
+fi
+
 calc_kernel_version
-echo "KERNELVERSION_HUMAN is $KERNELVERSION_HUMAN"
-KERNELVERSION=`expr $VERSION \* 65536 + $PATCHLEVEL \* 256 + $SUBLEVEL `
-echo "KERNELVERSION is $KERNELVERSION"
 
 # CPP support in dtc first appeared in 3.7: (+ (* 3 65536) (* 7 256)) 198400
 if [[ $KERNELVERSION -lt 198400 ]]
    then
 	echo "Older kernel: no cpp invocation."
-	scripts/dtc/dtc -O dts -o $BASE.out.dts $1
+	$DTC -O dts -o $BASE.out.dts $1
 	echo "Produced $BASE.out.dts"
 	exit 0
 fi
@@ -83,11 +89,11 @@ if [[ $? -ne 0 ]]
      exit
 fi
 
-scripts/dtc/dtc -O dts -o $BASE.out.dts -b 0 -i arch/arm/boot/dts -d $BASE.dtc.tmp $BASE.tmp
+$DTC -O dts -o $BASE.out.dts -b 0 -i arch/arm/boot/dts -d $BASE.dtc.tmp $BASE.tmp
 
 if [[ $? -eq 0 ]]
   then
      echo "Produced $BASE.out.dts"
 fi
 
-#rm *.tmp
+rm *.tmp
