@@ -1,0 +1,11 @@
+#!/bin/bash
+#export CC=arm-none-linux-gnueabi-gcc
+export CC=gcc
+
+cd scripts/dtc
+
+$CC -o fdtdump -Ilibfdt fdtdump.c util.c libfdt/*.c
+$CC -o fdtget -Ilibfdt fdtget.c util.c libfdt/*.c
+$CC -o fdtput -Ilibfdt fdtput.c util.c libfdt/*.c
+
+cd -
