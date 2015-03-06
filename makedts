@@ -95,7 +95,7 @@ if [[ $? -ne 0 ]]
      exit
 fi
 
-$DTC -O dts -o $BASE.out.dts -b 0 -i arch/arm/boot/dts -d $BASE.dtc.tmp $BASE.tmp
+$DTC -O dts -o $BASE.out.dts -b 0 -i arch/$SRCARCH/boot/dts -d $BASE.dtc.tmp $BASE.tmp
 
 if [[ $? -eq 0 ]]
   then
