@@ -33,7 +33,8 @@ function usage()
 	echo "by processing all its dependencies and producing output with the suffix .out.dts."
 	echo ""
 	echo "Run this script from the kernel top-level source directory and "
-	echo "provide the name of one device-tree file to preprocess."
+	echo "provide the full path of one device-tree source file to"
+	echo "preprocess.  Filename must end in 'dts'."
 	exit 1
 }
 
@@ -60,6 +61,11 @@ if [[ $# -ne 1 ]] ; then
    usage
 fi
 
+if [[ `basename $1 | awk -F \. {'print $2;'}` != "dts" ]]; then
+   usage
+fi
+
+# not in kernel source tree directory
 if ( [ ! -d arch ] || [ ! -d scripts ] ) ; then
    usage
 fi
