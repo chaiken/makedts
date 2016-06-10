@@ -20,11 +20,18 @@
 
 #!/bin/bash
 
-CC=arm-none-linux-gnueabi-gcc
-SRCARCH=arm
-BASE=`basename $1 .dts`
-DTC=scripts/dtc/dtc
-DTC_CPP_FLAGS="-E -Wp,-MD,$BASE.pre.tmp -nostdinc -Iarch/$SRCARCH/boot/dts -Iarch/$SRCARCH/boot/dts/include -undef -D__DTS__  -x assembler-with-cpp"
+if [[ -z "$CROSS_COMPILE" ]]; then
+   CROSS_COMPILE=arm-none-linux-gnueabi-
+fi
+if [[ -z "$CC" && ! -z "$CROSS_COMPILE" ]]; then
+   CC="$CROSS_COMPILE"gcc
+fi
+if [[ -z "$SRCARCH" ]]; then
+   SRCARCH=arm
+fi
+BASE=$(basename $1 .dts)
+DTC="$PWD"/scripts/dtc/dtc
+ARM_DTC_CPP_FLAGS="-E -Wp,-MD,$BASE.pre.tmp -nostdinc -Iarch/$SRCARCH/boot/dts -Iarch/$SRCARCH/boot/dts/include -undef -D__DTS__  -x assembler-with-cpp"
 
 function usage()
 {
@@ -41,27 +48,26 @@ function usage()
 function calc_kernel_version()
 {
 	VERSION=0
-	VERSION=`head -1 Makefile | awk {'print $3;'}`
-	PATCHLEVEL=`grep PATCHLEVEL Makefile | head -1 | awk {'print $3;'}`
-	SUBLEVEL=`grep SUBLEVEL Makefile | head -1 | awk {'print $3;'}`
-	EXTRAVERSION=`grep EXTRAVERSION Makefile | head -1 | awk {'print $3;'}`
+	VERSION=$(head -1 Makefile | awk {'print $3;'})
+	PATCHLEVEL=$(grep PATCHLEVEL Makefile | head -1 | awk {'print $3;'})
+	SUBLEVEL=$(grep SUBLEVEL Makefile | head -1 | awk {'print $3;'})
+	EXTRAVERSION=$(grep EXTRAVERSION Makefile | head -1 | awk {'print $3;'})
 
-	if [[ $VERSION -eq 0 ]]
-	   then
+	if (( "$VERSION" == 0 )); then
 		usage
 	fi
 
-	KERNELVERSION_HUMAN=$VERSION.$PATCHLEVEL.$SUBLEVEL$EXTRAVERSION
-	echo "KERNELVERSION is $KERNELVERSION_HUMAN"
-	KERNELVERSION=`expr $VERSION \* 65536 + $PATCHLEVEL \* 256 + $SUBLEVEL `
+	KERNELVERSION_HUMAN="$VERSION"."$PATCHLEVEL"."$SUBLEVEL""$EXTRAVERSION"
+	echo "KERNELVERSION is "$KERNELVERSION_HUMAN""
+	KERNELVERSION=$(expr $VERSION \* 65536 + $PATCHLEVEL \* 256 + $SUBLEVEL )
 	return
 }
 
-if [[ $# -ne 1 ]] ; then
+if (( $# != 1 )) ; then
    usage
 fi
 
-if [[ `basename $1 | awk -F \. {'print $2;'}` != "dts" ]]; then
+if [[ $(basename $1 | awk -F \. {'print $2;'}) != "dts" ]]; then
    usage
 fi
 
@@ -70,8 +76,8 @@ if ( [ ! -d arch ] || [ ! -d scripts ] ) ; then
    usage
 fi
 
-if ( [ ! -f $DTC ] ) ; then
-   echo "Device-tree compiler not found in $DTC."
+if ( [ ! -f "$DTC" ] ) ; then
+   echo "Device-tree compiler not found in "$DTC"."
    echo "Point this script to a working DTC, or just compile the kernel once before running again."
    exit
 fi
@@ -79,27 +85,25 @@ fi
 calc_kernel_version
 
 # CPP support in dtc first appeared in 3.7: (+ (* 3 65536) (* 7 256)) 198400
-if [[ $KERNELVERSION -lt 198400 ]]
+if (( "$KERNELVERSION" < 198400 ))
    then
 	echo "Older kernel: no cpp invocation."
-	$DTC -O dts -o $BASE.out.dts $1
-	echo "Produced $BASE.out.dts"
+	"$DTC" -O dts -o "$BASE".out.dts "$1"
+	echo "Produced "$BASE".out.dts"
 	exit 0
 fi
 
-$CC $DTC_CPP_FLAGS -o $BASE.tmp $1
+"$CC" $ARM_DTC_CPP_FLAGS -o "$BASE".tmp "$1"
 
-if [[ $? -ne 0 ]]
-  then
+if (( $? != 0 )); then
      echo "C preprocessor parsing of DTS failed."
      exit
 fi
 
-$DTC -O dts -o $BASE.out.dts -b 0 -i arch/$SRCARCH/boot/dts -d $BASE.dtc.tmp $BASE.tmp
+"$DTC" -O dts -o "$BASE".out.dts -b 0 -i arch/"$SRCARCH"/boot/dts -d "$BASE".dtc.tmp "$BASE".tmp
 
-if [[ $? -eq 0 ]]
-  then
-     echo "Produced $BASE.out.dts"
+if (( $? == 0 )); then
+     echo "Produced "$BASE".out.dts"
 fi
 
 rm *.tmp
