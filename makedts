@@ -1,3 +1,4 @@
+#!/bin/bash
 ###############################################################################
 ##									     ##
 ##	File:     makedts						     ##
@@ -18,92 +19,128 @@
 ##									     ##
 ###############################################################################
 
-#!/bin/bash
+set -e
 
 if [[ -z "$CROSS_COMPILE" ]]; then
-   CROSS_COMPILE=arm-none-linux-gnueabi-
+   CROSS_COMPILE=arm-linux-gnueabihf-
 fi
-if [[ -z "$CC" && ! -z "$CROSS_COMPILE" ]]; then
+if [[ -z "$CC" && ! ! -z "$CROSS_COMPILE" ]]; then
    CC="$CROSS_COMPILE"gcc
 fi
 if [[ -z "$SRCARCH" ]]; then
    SRCARCH=arm
 fi
-BASE=$(basename $1 .dts)
-DTC="$PWD"/scripts/dtc/dtc
-ARM_DTC_CPP_FLAGS="-E -Wp,-MD,$BASE.pre.tmp -nostdinc -Iarch/$SRCARCH/boot/dts -Iarch/$SRCARCH/boot/dts/include -undef -D__DTS__  -x assembler-with-cpp"
+
+set -u
+
+BASE="$(basename $1 .dts)"
+DTC=scripts/dtc/dtc
+DTC_CPP_FLAGS="-E -Wp,-MD,${BASE}.pre.tmp -nostdinc -Iarch/${SRCARCH}/boot/dts -Iarch/${SRCARCH}/boot/dts/include -undef -D__DTS__  -x assembler-with-cpp"
 
 function usage()
 {
-	echo ""
-	echo "makedts compiles a top-level 'board file' device-tree source file "
-	echo "by processing all its dependencies and producing output with the suffix .out.dts."
-	echo ""
-	echo "Run this script from the kernel top-level source directory and "
-	echo "provide the full path of one device-tree source file to"
-	echo "preprocess.  Filename must end in 'dts'."
-	exit 1
+  echo ""
+  echo "makedts compiles a top-level 'board file' device-tree source file "
+  echo "by processing all its dependencies and producing output with the suffix .out.dts."
+  echo ""
+  echo "Run this script from the kernel top-level source directory and "
+  echo "provide the full path of one device-tree source file to"
+  echo "preprocess.  Filename must end in 'dts'."
+  exit 1
 }
 
 function calc_kernel_version()
 {
-	VERSION=0
-	VERSION=$(head -1 Makefile | awk {'print $3;'})
-	PATCHLEVEL=$(grep PATCHLEVEL Makefile | head -1 | awk {'print $3;'})
-	SUBLEVEL=$(grep SUBLEVEL Makefile | head -1 | awk {'print $3;'})
-	EXTRAVERSION=$(grep EXTRAVERSION Makefile | head -1 | awk {'print $3;'})
+  VERSION=0
+  # Check for older kernels.
+  VERSION=`head -1 Makefile | grep -v SPDX | grep -v GPL | awk {'print $3;'}`
+  # If the string is empty, a newer kernel.
+  if [[ -z "$VERSION" || "$VERSION" -eq 0 ]]; then
+    VERSION=`head -2 Makefile | grep -v SPDX | grep -v GPL | awk {'print $3;'}`
+  fi
+  if [[ -z "$VERSION" || "$VERSION" -eq 0 ]]; then
+    echo "Failed to calculate kernel version."
+    usage
+  fi
+  PATCHLEVEL=`grep PATCHLEVEL Makefile | head -1 | awk {'print $3;'}`
+  SUBLEVEL=`grep SUBLEVEL Makefile | head -1 | awk {'print $3;'}`
+  EXTRAVERSION=`grep EXTRAVERSION Makefile | head -1 | awk {'print $3;'}`
 
-	if (( "$VERSION" == 0 )); then
-		usage
-	fi
-
-	KERNELVERSION_HUMAN="$VERSION"."$PATCHLEVEL"."$SUBLEVEL""$EXTRAVERSION"
-	echo "KERNELVERSION is "$KERNELVERSION_HUMAN""
-	KERNELVERSION=$(expr $VERSION \* 65536 + $PATCHLEVEL \* 256 + $SUBLEVEL )
-	return
+  KERNELVERSION_HUMAN=$VERSION.$PATCHLEVEL.$SUBLEVEL$EXTRAVERSION
+  KERNELVERSION=`expr $VERSION \* 65536 + $PATCHLEVEL \* 256 + $SUBLEVEL `
+  echo "KERNELVERSION is ${KERNELVERSION_HUMAN} or ${KERNELVERSION}"
+  return
 }
 
-if (( $# != 1 )) ; then
-   usage
-fi
+main() {
+  if (( $# != 1 )) ; then
+     echo "Wrong number of parameters"
+     usage
+  fi
 
-if [[ $(basename $1 | awk -F \. {'print $2;'}) != "dts" ]]; then
-   usage
-fi
+  if [[ `basename $1 | awk -F \. {'print $2;'}` != "dts" ]]; then
+     echo "Wrong input filename"
+     usage
+  fi
 
-# not in kernel source tree directory
-if ( [ ! -d arch ] || [ ! -d scripts ] ) ; then
-   usage
-fi
+  # not in kernel source tree directory
+  if ( [ ! -d arch ] || [ ! -d scripts ] ) ; then
+    echo "Wrong directory"
+    usage
+  fi
 
-if ( [ ! -f "$DTC" ] ) ; then
-   echo "Device-tree compiler not found in "$DTC"."
-   echo "Point this script to a working DTC, or just compile the kernel once before running again."
-   exit
-fi
+  if ( [ ! -f $DTC ] ) ; then
+    echo "Device-tree compiler not found in $DTC."
+    echo "Point this script to a working DTC, \
+        or just compile the kernel once before running again."
+    exit 1
+  fi
 
-calc_kernel_version
+  calc_kernel_version
 
-# CPP support in dtc first appeared in 3.7: (+ (* 3 65536) (* 7 256)) 198400
-if (( "$KERNELVERSION" < 198400 ))
-   then
-	echo "Older kernel: no cpp invocation."
-	"$DTC" -O dts -o "$BASE".out.dts "$1"
-	echo "Produced "$BASE".out.dts"
-	exit 0
-fi
+  # CPP support in dtc first appeared in 3.7: (+ (* 3 65536) (* 7 256)) 198400
+  if (( KERNELVERSION < 198400 )); then
+    echo "Older kernel: no cpp invocation."
+    "$DTC" -O dts -o "$BASE".out.dts "$1"
+    echo "Produced "$BASE".out.dts"
+    exit 0
+  # Not sure about this number . . .
+  elif (( KERNELVERSION < 210000 )); then
+    echo "Invoking CPP . . ."
+    # Do not quote the flags below!
+    "$CC" $DTC_CPP_FLAGS -o "$BASE".tmp "$1"
+    readonly errnum="$?"
+    if (( errnum )); then
+      echo "C preprocessor parsing of DTS failed."
+      echo "Produced no output: error ${errnum}."
+      exit 1
+    else
+      "$DTC" -O dts -o "$BASE".out.dts -b 0 -i arch/arm/boot/dts -d \
+          "$BASE".dtc.tmp "$BASE".tmp
+      echo "Produced ${BASE}.out.dts"
+      rm *.tmp
+      exit 0
+    fi
+  fi
 
-"$CC" $ARM_DTC_CPP_FLAGS -o "$BASE".tmp "$1"
+  echo "Compiling device-tree binary . . ."
+  make ARCH="$SRCARCH" CROSS_COMPILE="$SRCARCH"-linux-gnueabihf- "$BASE".dtb
+  readonly errnum1="$?"
+  if (( errnum1 )); then
+    echo "Failed to compile device-tree binary: ${errnum1}"
+    exit 1
+  fi
 
-if (( $? != 0 )); then
-     echo "C preprocessor parsing of DTS failed."
-     exit
-fi
+  $DTC -O dts -o $BASE.out.dts -I dtb arch/"$SRCARCH"/boot/dts/"$BASE".dtb
+  readonly errnum2="$?"
+  if ! (( errnum2 )); then
+     echo "Produced $BASE.out.dts"
+  else
+    echo "Produced no output: error ${errnum2}."
+    exit
+  fi
 
-"$DTC" -O dts -o "$BASE".out.dts -b 0 -i arch/"$SRCARCH"/boot/dts -d "$BASE".dtc.tmp "$BASE".tmp
+  exit 0
+}
 
-if (( $? == 0 )); then
-     echo "Produced "$BASE".out.dts"
-fi
-
-rm *.tmp
+main "$@"
